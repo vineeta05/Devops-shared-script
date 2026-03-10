@@ -3,6 +3,7 @@
 # ─── CONFIG ───────────────────────────────────────────────────
 REPO_URL="https://github.com/vineeta05/Devops-shared-script.git"
 S3_BUCKET="devops-shared-scripts-bucket"
+PIPELINE_NAME="test-pipeline"
 # ──────────────────────────────────────────────────────────────
 
 WORK_DIR="/tmp/devops-build"
@@ -19,7 +20,6 @@ else
 fi
 
 # Step 2: Clean up and clone the repo
-
 echo ">>> Cloning repository..."
 rm -rf "$WORK_DIR"
 mkdir -p "$WORK_DIR"
@@ -37,7 +37,7 @@ for ENV in DEV INT QA; do
   STAGE_DIR="$WORK_DIR/stage_$ENV"
   mkdir -p "$STAGE_DIR/scripts"
 
-  # Copy appspec.yml and the deploy script into it
+  # Copy appspec.yml and the deploy script into staging folder
   cp "$REPO_DIR/appspec/appspec.yml" "$STAGE_DIR/appspec.yml"
   cp "$DEPLOY_SCRIPT" "$STAGE_DIR/scripts/"
 
@@ -56,5 +56,39 @@ for ENV in DEV INT QA; do
   aws s3 cp "$WORK_DIR/${ENV}.zip" "s3://$S3_BUCKET/appspec/${ENV}.zip"
   echo ">>> Uploaded ${ENV}.zip"
 done
+
+# Step 5: Update pipeline source using Python
+echo ">>> Updating pipeline source..."
+
+# Get pipeline JSON
+aws codepipeline get-pipeline --name "$PIPELINE_NAME" > /tmp/pipeline_raw.json
+
+# Fix JSON and update bucket/key using Python
+python3 << 'EOF'
+import json
+
+with open('/tmp/pipeline_raw.json') as f:
+    data = json.load(f)
+
+# Extract only pipeline (remove metadata)
+pipeline = data['pipeline']
+
+# Update bucket and object key in Source stage
+for stage in pipeline['stages']:
+    for action in stage['actions']:
+        if action['actionTypeId']['category'] == 'Source':
+            action['configuration']['S3Bucket'] = 'devops-shared-scripts-bucket'
+            action['configuration']['S3ObjectKey'] = 'appspec/DEV.zip'
+
+# Save clean JSON
+with open('/tmp/pipeline.json', 'w') as f:
+    json.dump({'pipeline': pipeline}, f, indent=4)
+
+print("JSON fixed successfully!")
+EOF
+
+# Apply updated pipeline
+aws codepipeline update-pipeline --cli-input-json file:///tmp/pipeline.json
+echo ">>> Pipeline updated!"
 
 echo ">>> All done!"
