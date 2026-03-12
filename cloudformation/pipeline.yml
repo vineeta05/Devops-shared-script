@@ -1,0 +1,75 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Test Pipeline using CloudFormation
+
+Resources:
+
+  DummyBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: test-dummy-bucket-vineeta
+
+  TestApplication:
+    Type: AWS::CodeDeploy::Application
+    Properties:
+      ApplicationName: test-application
+      ComputePlatform: Server
+
+  TestDeploymentGroup:
+    Type: AWS::CodeDeploy::DeploymentGroup
+    Properties:
+      ApplicationName: !Ref TestApplication
+      DeploymentGroupName: test-deployment-group
+      ServiceRoleArn: arn:aws:iam::829489762677:role/CodeDeploy-role
+      DeploymentConfigName: CodeDeployDefault.AllAtOnce
+      Ec2TagFilters:
+        - Key: Name
+          Value: test-server
+          Type: KEY_AND_VALUE
+
+  TestPipeline:
+    Type: AWS::CodePipeline::Pipeline
+    Properties:
+      Name: test-pipeline
+      RoleArn: arn:aws:iam::829489762677:role/service-role/test-pipeline-role
+      ArtifactStore:
+        Type: S3
+        Location: !Ref DummyBucket
+      Stages:
+
+        - Name: Source
+          Actions:
+            - Name: Source
+              ActionTypeId:
+                Category: Source
+                Owner: AWS
+                Provider: S3
+                Version: '1'
+              Configuration:
+                S3Bucket: !Ref DummyBucket
+                S3ObjectKey: test.zip
+                PollForSourceChanges: false
+              OutputArtifacts:
+                - Name: SourceArtifact
+
+        - Name: Approval
+          Actions:
+            - Name: manual-approval
+              ActionTypeId:
+                Category: Approval
+                Owner: AWS
+                Provider: Manual
+                Version: '1'
+
+        - Name: Deploy
+          Actions:
+            - Name: Deploy
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Provider: CodeDeploy
+                Version: '1'
+              Configuration:
+                ApplicationName: !Ref TestApplication
+                DeploymentGroupName: !Ref TestDeploymentGroup
+              InputArtifacts:
+                - Name: SourceArtifact
