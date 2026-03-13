@@ -14,7 +14,6 @@ for i in {1..60}; do
 TOKEN=$(aws codepipeline get-pipeline-state --name "$PIPELINE" | jq -r \
   --arg s "$STAGE" \
   --arg a "$ACTION" \
-  --arg exec "$EXEC_ID" \
   '.stageStates[] | 
    select(.stageName==$s) | 
    .actionStates[] | 
