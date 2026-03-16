@@ -8,7 +8,7 @@ DEPLOY_STAGE="Deploy"
 DEPLOY_ACTION="Deploy"
 
 # ─────────────────────────────────────────
-# Step 0: Cleanup — purani executions kill karo
+# Step 0: Cleanup — Kill old exections
 # ─────────────────────────────────────────
 echo ">>> Checking for old executions..."
 
@@ -57,7 +57,7 @@ while true; do
 done
 
 # ─────────────────────────────────────────
-# Step 1: Nayi execution start karo
+# Step 1: Start new execution
 # ─────────────────────────────────────────
 echo "Starting pipeline: $PIPELINE"
 EXEC_ID=$(aws codepipeline start-pipeline-execution \
@@ -67,7 +67,7 @@ EXEC_ID=$(aws codepipeline start-pipeline-execution \
 echo "Execution started: $EXEC_ID"
 
 # ─────────────────────────────────────────
-# Step 2: Approval token ka wait karo
+# Step 2: Wait for Approval token
 # ─────────────────────────────────────────
 echo "Waiting for approval token..."
 TOKEN=""
@@ -102,7 +102,7 @@ if [[ -z "${TOKEN:-}" ]]; then
 fi
 
 # ─────────────────────────────────────────
-# Step 3: Approve karo
+# Step 3: Approve Token
 # ─────────────────────────────────────────
 aws codepipeline put-approval-result \
   --pipeline-name "$PIPELINE" \
@@ -113,7 +113,7 @@ aws codepipeline put-approval-result \
 echo "Approval submitted."
 
 # ─────────────────────────────────────────
-# Step 4: Pipeline status monitor karo
+# Step 4: Monitor Pipeline status 
 # ─────────────────────────────────────────
 echo "Monitoring pipeline execution $EXEC_ID..."
 while true; do
