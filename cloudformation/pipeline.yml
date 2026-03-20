@@ -1,56 +1,225 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: Test Pipeline using CloudFormation
+Description: Java CI/CD Pipeline using CloudFormation
 
 Resources:
 
-  DummyBucket:
+  # S3 Bucket for artifacts
+  ArtifactBucket:
     Type: AWS::S3::Bucket
     Properties:
-      BucketName: test-dummy-bucket-vineeta
+      BucketName: devops-shared-scripts-bucket
 
+  # CodeBuild Service Role
+  CodeBuildServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: codebuild-java-cicd-build-service-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codebuild.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: CodeBuildPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: arn:aws:logs:*:*:*
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                Resource: !Sub "${ArtifactBucket.Arn}/*"
+              - Effect: Allow
+                Action:
+                  - ecr:GetAuthorizationToken
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - ecr:BatchCheckLayerAvailability
+                  - ecr:GetDownloadUrlForLayer
+                  - ecr:BatchGetImage
+                  - ecr:PutImage
+                  - ecr:InitiateLayerUpload
+                  - ecr:UploadLayerPart
+                  - ecr:CompleteLayerUpload
+                Resource: !Sub "arn:aws:ecr:${AWS::Region}:${AWS::AccountId}:repository/*"
+
+  # CodePipeline Service Role
+  CodePipelineRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: test-pipeline-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codepipeline.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: CodePipelinePolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: arn:aws:logs:*:*:*
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:GetObjectVersion
+                Resource: !Sub "${ArtifactBucket.Arn}/*"
+              - Effect: Allow
+                Action:
+                  - codecommit:GetBranch
+                  - codecommit:GetCommit
+                  - codecommit:UploadArchive
+                  - codecommit:CancelUploadArchive
+                  - codecommit:GetUploadArchiveStatus
+                Resource: !Sub "arn:aws:codecommit:${AWS::Region}:${AWS::AccountId}:*"
+              - Effect: Allow
+                Action:
+                  - codebuild:BatchGetBuilds
+                  - codebuild:BatchGetBuildBatches
+                  - codebuild:BatchGetReports
+                  - codebuild:BatchGetReportGroups
+                  - codebuild:CreateReport
+                  - codebuild:CreateReportGroup
+                  - codebuild:UpdateReport
+                  - codebuild:UpdateReportGroup
+                  - codebuild:PutTestReports
+                  - codebuild:PutClassicTestReports
+                  - codebuild:BatchBuildsBatch
+                  - codebuild:StartBuild
+                  - codebuild:StartBuildBatch
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - codedeploy:CreateDeployment
+                  - codedeploy:GetApplication
+                  - codedeploy:GetApplicationRevision
+                  - codedeploy:GetDeployment
+                  - codedeploy:GetDeploymentConfig
+                  - codedeploy:GetDeploymentGroup
+                Resource: '*'
+
+  # CodeDeploy Service Role
+  CodeDeployRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: CodeDeploy-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codedeploy.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSCodeDeployRole
+
+  # ECR Repository
+  ECRRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: cicd-demo
+
+  # CodeBuild Project
+  CodeBuildProject:
+    Type: AWS::CodeBuild::Project
+    Properties:
+      Name: java-cicd-build
+      ServiceRole: !GetAtt CodeBuildServiceRole.Arn
+      Environment:
+        Type: LINUX_CONTAINER
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/standard:7.0
+        PrivilegedMode: true
+        EnvironmentVariables:
+          - Name: ECR_REPO_URI
+            Value: !Sub "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/cicd-demo"
+      Source:
+        Type: CODEPIPELINE
+        BuildSpec: buildspec.yml
+      Artifacts:
+        Type: CODEPIPELINE
+
+  # CodeDeploy Application
   TestApplication:
     Type: AWS::CodeDeploy::Application
     Properties:
       ApplicationName: test-application
       ComputePlatform: Server
 
+  # CodeDeploy Deployment Group
   TestDeploymentGroup:
     Type: AWS::CodeDeploy::DeploymentGroup
     Properties:
       ApplicationName: !Ref TestApplication
       DeploymentGroupName: test-deployment-group
-      ServiceRoleArn: arn:aws:iam::829489762677:role/CodeDeploy-role
+      ServiceRoleArn: !GetAtt CodeDeployRole.Arn
       DeploymentConfigName: CodeDeployDefault.AllAtOnce
       Ec2TagFilters:
         - Key: Name
           Value: test-server
           Type: KEY_AND_VALUE
 
+  # CodePipeline
   TestPipeline:
     Type: AWS::CodePipeline::Pipeline
     Properties:
       Name: test-pipeline
-      RoleArn: arn:aws:iam::829489762677:role/service-role/test-pipeline-role
+      RoleArn: !GetAtt CodePipelineRole.Arn
       ArtifactStore:
         Type: S3
-        Location: !Ref DummyBucket
+        Location: !Ref ArtifactBucket
       Stages:
 
+        # Stage 1: Source
         - Name: Source
           Actions:
             - Name: Source
               ActionTypeId:
                 Category: Source
                 Owner: AWS
-                Provider: S3
+                Provider: CodeCommit
                 Version: '1'
               Configuration:
-                S3Bucket: !Ref DummyBucket
-                S3ObjectKey: test.zip
+                RepositoryName: java-cicd-repo
+                BranchName: main
                 PollForSourceChanges: false
               OutputArtifacts:
                 - Name: SourceArtifact
 
+        # Stage 2: Build
+        - Name: Build
+          Actions:
+            - Name: Build
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Provider: CodeBuild
+                Version: '1'
+              Configuration:
+                ProjectName: !Ref CodeBuildProject
+              InputArtifacts:
+                - Name: SourceArtifact
+              OutputArtifacts:
+                - Name: BuildArtifact
+
+        # Stage 3: Approval
         - Name: Approval
           Actions:
             - Name: manual-approval
@@ -60,6 +229,7 @@ Resources:
                 Provider: Manual
                 Version: '1'
 
+        # Stage 4: Deploy
         - Name: Deploy
           Actions:
             - Name: Deploy
@@ -72,4 +242,4 @@ Resources:
                 ApplicationName: !Ref TestApplication
                 DeploymentGroupName: !Ref TestDeploymentGroup
               InputArtifacts:
-                - Name: SourceArtifact
+                - Name: BuildArtifact
