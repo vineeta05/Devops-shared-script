@@ -389,7 +389,7 @@ Resources:
 
   # CodeDeploy Application
   CodeDeployApplication:
-    Type: AWS::CodeDeploy::App
+    Type: AWS::CodeDeploy::Application
     Properties:
       ApplicationName: cicd-demo-app
       ComputePlatform: ECS
