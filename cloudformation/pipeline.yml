@@ -21,6 +21,53 @@ Resources:
     Properties:
       ClusterName: java-cicd-cluster
 
+  # Internet Gateway for VPC
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: cicd-demo-igw
+
+  # Attach IGW to VPC
+  AttachGateway:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: vpc-0a38c8b865b35e1f9
+      InternetGatewayId: !Ref InternetGateway
+
+  # Route Table for public subnets
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: vpc-0a38c8b865b35e1f9
+      Tags:
+        - Key: Name
+          Value: cicd-demo-public-rt
+
+  # Route to Internet Gateway
+  PublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: AttachGateway
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  # Associate Subnet 1 with Route Table
+  SubnetRouteTableAssociation1:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: subnet-03cd0644ab70b302d
+      RouteTableId: !Ref PublicRouteTable
+
+  # Associate Subnet 2 with Route Table
+  SubnetRouteTableAssociation2:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: subnet-006844af1140cc463
+      RouteTableId: !Ref PublicRouteTable
+
   # Security Group for ALB and ECS Tasks
   ALBSecurityGroup:
     Type: AWS::EC2::SecurityGroup
