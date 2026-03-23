@@ -1,10 +1,12 @@
-# AWS CI/CD Pipeline for Java Applications
+# AWS CI/CD Pipeline for Java Applications with Blue/Green Deployment
 
-A working CI/CD pipeline built with AWS services. This repo contains everything needed to automatically build and deploy a Java application using CodeCommit, CodeBuild, and CodeDeploy.
+I built this to understand how real CI/CD pipelines work in DevOps. The goal was straightforward: push code to a repository and have it automatically build, containerize, and deploy to production with zero downtime.
 
-## What's in here
+What you get is an end-to-end pipeline that handles the entire workflow—from code commit all the way to a running application on ECS Fargate with safe, zero-downtime deployments using Blue/Green strategy.
 
-The pipeline handles the full flow: code → compile → Docker image → deploy. Each component is defined in CloudFormation, so you can spin it up or tear it down with a few commands.
+## The problem this solves
+
+Manual deployments are slow and risky. You push code, someone runs deployment scripts, and if something goes wrong during the swap, you have downtime. This pipeline automates all that and uses Blue/Green deployment to ensure the old version stays running until the new one is validated and working.
 
 ## Getting started
 
@@ -44,7 +46,7 @@ aws cloudformation describe-stacks \
 ## How it's organized
 
 ```
-devops-shared-scripts/
+aws-cicd-ecs-bluegreen/
 ├── cloudformation/
 │   └── pipeline.yml              # All AWS resources defined here
 ├── java-cicd/
@@ -57,12 +59,16 @@ devops-shared-scripts/
 └── README.md
 ```
 
-## The pipeline stages
+## How it flows: From code to running application
 
-1. **Source** - Watches CodeCommit for changes
-2. **Build** - Compiles Java code and builds Docker image via CodeBuild
-3. **Approval** - Manual gate before deploying
-4. **Deploy** - Rolls out the new image via CodeDeploy
+1. **You push code** to CodeCommit (AWS's version of GitHub)
+2. **CodeBuild picks it up**, compiles the Java code, and creates a Docker image
+3. **Image gets pushed** to ECR (AWS's container registry)
+4. **Manual approval stage** - Someone reviews before proceeding to production
+5. **CodeDeploy handles the deployment** with Blue/Green strategy (explained below)
+6. **CloudWatch captures logs** so you can see what's happening
+
+The entire thing is triggered automatically—no manual steps, no "wait, did we forget to restart the service?"
 
 ## How the IAM roles work
 
@@ -102,6 +108,27 @@ Final image is about 7x smaller than if we shipped everything. Faster deploys, l
 
 The entire pipeline is defined in `pipeline.yml` using CloudFormation. No manual clicking around in the AWS console. You can version control it, review changes, and deploy consistently.
 
+## Blue/Green Deployment: Why this matters
+
+Instead of stopping the old version and starting the new one (which causes downtime), we run both at the same time:
+
+- **Blue** = your currently running version handling all the traffic
+- **Green** = the new version you're about to release, running in parallel but not yet receiving traffic
+
+Once Green is validated and working correctly, we shift traffic to it. If something goes wrong, we switch back to Blue instantly. The user never sees any downtime.
+
+This was one of the key things I wanted to understand—how real companies deploy without their services going offline, even for 30 seconds.
+
+## What I built and what I learned
+
+- **How CI/CD actually works** - It's not magic, it's just automation of steps you'd normally do manually
+- **Docker in practice** - Multi-stage builds, why base image choice matters (rate limiting is real), how containerization works
+- **IAM and security** - Why each service needs only specific permissions (principle of least privilege)
+- **Infrastructure as Code** - Everything is in CloudFormation, so deployments are reproducible and version-controlled
+- **ECS Fargate** - Container orchestration without managing servers
+
+The trickiest part was understanding how all the pieces fit together. Path issues, branch naming, registry selection—it all matters.
+
 ## Troubleshooting
 
 ### Stack creation fails with "role already exists"
@@ -119,7 +146,7 @@ If you're done and want to delete everything to save costs:
 
 ```bash
 # Empty the S3 bucket first
-aws s3 rm s3://devops-shared-scripts-bucket --recursive --region us-east-1
+aws s3 rm s3://aws-cicd-ecs-bluegreen-bucket --recursive --region us-east-1
 
 # Delete the stack
 aws cloudformation delete-stack --stack-name test-pipeline-stack --region us-east-1
@@ -141,11 +168,6 @@ Most of this fits in AWS free tier:
 - [Docker multi-stage builds](https://docs.docker.com/build/building/multi-stage/)
 - [ECR Public Gallery](https://gallery.ecr.aws/)
 
-## What's next
+---
 
-Could add:
-- Unit test stage in the pipeline
-- Container image security scanning
-- Deploy to multiple environments (dev/staging/prod)
-- CloudWatch dashboards and alerts
-- Automatic rollback on failed deployments
+**Built by:** Vineeta Singh as a learning project in DevOps

@@ -1,13 +1,13 @@
 #!/bin/bash
 
 # ─── CONFIG ───────────────────────────────────────────────────
-REPO_URL="https://github.com/vineeta05/Devops-shared-script.git"
-S3_BUCKET="devops-shared-scripts-bucket"
+REPO_URL="https://github.com/vineeta05/aws-cicd-ecs-bluegreen.git"
+S3_BUCKET="aws-cicd-ecs-bluegreen-bucket"
 PIPELINE_NAME="test-pipeline"
 # ──────────────────────────────────────────────────────────────
 
 WORK_DIR="/tmp/devops-build"
-REPO_DIR="$WORK_DIR/Devops-shared-script"
+REPO_DIR="$WORK_DIR/aws-cicd-ecs-bluegreen"
 
 # Step 1: Create S3 bucket if it doesn't already exist
 echo ">>> Checking S3 bucket..."
@@ -67,12 +67,12 @@ sudo apt-get install -y jq
 aws codepipeline get-pipeline --name "$PIPELINE_NAME" > /tmp/pipeline_raw.json
 
 # Remove metadata and update bucket/key using jq
-jq '.pipeline | 
-    (.stages[] | 
-    select(.name=="Source") | 
-    .actions[].configuration) |= 
+jq '.pipeline |
+    (.stages[] |
+    select(.name=="Source") |
+    .actions[].configuration) |=
     . + {
-        "S3Bucket": "devops-shared-scripts-bucket",
+        "S3Bucket": "aws-cicd-ecs-bluegreen-bucket",
         "S3ObjectKey": "appspec/DEV.zip"
     }' /tmp/pipeline_raw.json > /tmp/pipeline.json
 

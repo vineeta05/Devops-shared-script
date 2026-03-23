@@ -7,7 +7,7 @@ Resources:
   ArtifactBucket:
     Type: AWS::S3::Bucket
     Properties:
-      BucketName: devops-shared-scripts-bucket
+      BucketName: aws-cicd-ecs-bluegreen-bucket
 
   # ECR Repository
   ECRRepository:
