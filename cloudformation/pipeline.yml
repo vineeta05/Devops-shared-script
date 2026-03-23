@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: Java CI/CD Pipeline with ECS Fargate Rolling Update
+Description: Java CI/CD Pipeline with ECS Fargate Blue/Green Deployment via CodeDeploy
 
 Resources:
 
@@ -20,6 +20,142 @@ Resources:
     Type: AWS::ECS::Cluster
     Properties:
       ClusterName: java-cicd-cluster
+
+  # Security Group for ALB and ECS Tasks
+  ALBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: cicd-demo-alb-sg
+      GroupDescription: Security group for ALB allowing HTTP traffic
+      VpcId: vpc-0a38c8b865b35e1f9
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+          Description: Allow HTTP from anywhere
+        - IpProtocol: tcp
+          FromPort: 8080
+          ToPort: 8080
+          CidrIp: 0.0.0.0/0
+          Description: Allow port 8080 for validation
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+          Description: Allow all outbound traffic
+      Tags:
+        - Key: Name
+          Value: cicd-demo-alb-sg
+
+  # Security Group for ECS Tasks
+  ECSSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: cicd-demo-ecs-sg
+      GroupDescription: Security group for ECS tasks
+      VpcId: vpc-0a38c8b865b35e1f9
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 8080
+          ToPort: 8080
+          SourceSecurityGroupId: !Ref ALBSecurityGroup
+          Description: Allow traffic from ALB
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+          Description: Allow all outbound traffic
+      Tags:
+        - Key: Name
+          Value: cicd-demo-ecs-sg
+
+  # Application Load Balancer
+  ApplicationLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: cicd-demo-alb
+      Type: application
+      Scheme: internet-facing
+      IpAddressType: ipv4
+      Subnets:
+        - subnet-03cd0644ab70b302d
+        - subnet-006844af1140cc463
+      SecurityGroups:
+        - !Ref ALBSecurityGroup
+      Tags:
+        - Key: Name
+          Value: cicd-demo-alb
+
+  # Blue Target Group (for Blue/Green deployment)
+  TargetGroupBlue:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: cicd-demo-blue-tg
+      Port: 8080
+      Protocol: HTTP
+      VpcId: vpc-0a38c8b865b35e1f9
+      TargetType: ip
+      HealthCheckEnabled: true
+      HealthCheckIntervalSeconds: 30
+      HealthCheckPath: /health
+      HealthCheckProtocol: HTTP
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 2
+      Matcher:
+        HttpCode: '200'
+      TargetGroupAttributes:
+        - Key: deregistration_delay.timeout_seconds
+          Value: '30'
+      Tags:
+        - Key: Name
+          Value: cicd-demo-blue-tg
+
+  # Green Target Group (for Blue/Green deployment)
+  TargetGroupGreen:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: cicd-demo-green-tg
+      Port: 8080
+      Protocol: HTTP
+      VpcId: vpc-0a38c8b865b35e1f9
+      TargetType: ip
+      HealthCheckEnabled: true
+      HealthCheckIntervalSeconds: 30
+      HealthCheckPath: /health
+      HealthCheckProtocol: HTTP
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 2
+      Matcher:
+        HttpCode: '200'
+      TargetGroupAttributes:
+        - Key: deregistration_delay.timeout_seconds
+          Value: '30'
+      Tags:
+        - Key: Name
+          Value: cicd-demo-green-tg
+
+  # ALB Listener for Blue (main traffic)
+  ALBListenerBlue:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref ApplicationLoadBalancer
+      Port: 80
+      Protocol: HTTP
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref TargetGroupBlue
+
+  # ALB Listener for Green (validation traffic on port 8080)
+  ALBListenerGreen:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref ApplicationLoadBalancer
+      Port: 8080
+      Protocol: HTTP
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref TargetGroupGreen
 
   # ECS Task Execution Role
   ECSTaskExecutionRole:
@@ -54,6 +190,12 @@ Resources:
             - ContainerPort: 8080
               Protocol: tcp
           Essential: true
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: /ecs/cicd-demo
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: ecs
 
   # ECS Service
   ECSService:
@@ -68,9 +210,61 @@ Resources:
         AwsvpcConfiguration:
           AssignPublicIp: ENABLED
           Subnets:
-            - subnet-0d297574a09bf9a59
+            - subnet-03cd0644ab70b302d
           SecurityGroups:
-            - sg-04cc4a899dd380cf3
+            - !Ref ECSSecurityGroup
+
+  # CodeDeploy Service Role
+  CodeDeployServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: codedeploy-ecs-service-role
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: codedeploy.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: CodeDeployECSPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ecs:CreateTaskSet
+                  - ecs:UpdateServicePrimaryTaskSet
+                  - ecs:DescribeTaskSet
+                  - ecs:DescribeServices
+                  - ecs:DescribeTaskDefinition
+                  - ecs:DescribeTasks
+                  - ecs:ListTasks
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - elasticloadbalancing:DescribeTargetGroups
+                  - elasticloadbalancing:DescribeListeners
+                  - elasticloadbalancing:ModifyListener
+                  - elasticloadbalancing:DescribeRules
+                  - elasticloadbalancing:ModifyRule
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - lambda:InvokeFunction
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - cloudwatch:GetMetricStatistics
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - sns:Publish
+                Resource: '*'
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                Resource: '*'
 
   # CodeBuild Service Role
   CodeBuildServiceRole:
@@ -189,9 +383,34 @@ Resources:
             Value: !Sub "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/cicd-demo"
       Source:
         Type: CODEPIPELINE
-        BuildSpec: buildspec.yml
+        BuildSpec: java-cicd/buildspec.yml
       Artifacts:
         Type: CODEPIPELINE
+
+  # CodeDeploy Application
+  CodeDeployApplication:
+    Type: AWS::CodeDeploy::App
+    Properties:
+      ApplicationName: cicd-demo-app
+      ComputePlatform: ECS
+
+  # CodeDeploy Deployment Group for Blue/Green
+  CodeDeployDeploymentGroup:
+    Type: AWS::CodeDeploy::DeploymentGroup
+    Properties:
+      ApplicationName: !Ref CodeDeployApplication
+      DeploymentGroupName: cicd-demo-dg
+      DeploymentConfigName: CodeDeployDefault.ECSLinear10Percent5Minutes
+      ServiceRoleArn: !GetAtt CodeDeployServiceRole.Arn
+      AutoRollbackConfiguration:
+        Enabled: true
+        Events:
+          - DEPLOYMENT_FAILURE
+          - DEPLOYMENT_STOP_ON_ALARM
+      TriggerConfigurations: []
+      DeploymentStyle:
+        DeploymentType: BLUE_GREEN
+        DeploymentOption: WITH_TRAFFIC_CONTROL
 
   # CodePipeline
   TestPipeline:
@@ -249,11 +468,10 @@ Resources:
               ActionTypeId:
                 Category: Deploy
                 Owner: AWS
-                Provider: ECS
+                Provider: CodeDeploy
                 Version: '1'
               Configuration:
-                ClusterName: !Ref ECSCluster
-                ServiceName: !GetAtt ECSService.Name
-                FileName: imagedefinitions.json
+                ApplicationName: !Ref CodeDeployApplication
+                DeploymentGroupName: !Ref CodeDeployDeploymentGroup
               InputArtifacts:
                 - Name: BuildArtifact

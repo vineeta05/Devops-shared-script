@@ -1,9 +1,22 @@
 version: 0.0
+
 Resources:
   - TargetService:
       Type: AWS::ECS::Service
       Properties:
-        TaskDefinition: <TASK_DEFINITION>
+        TaskDefinition: "<TASK_DEFINITION>"
         LoadBalancerInfo:
           ContainerName: "cicd-demo"
           ContainerPort: 8080
+        PlatformVersion: "LATEST"
+        NetworkConfiguration:
+          AwsvpcConfiguration:
+            Subnets:
+              - "subnet-03cd0644ab70b302d"
+            SecurityGroups:
+              - "sg-REPLACE_WITH_ECS_SG"
+            AssignPublicIp: "ENABLED"
+
+Hooks:
+  - BeforeAllowTraffic: "PreTrafficHook"
+  - AfterAllowTraffic: "PostTrafficHook"
