@@ -382,9 +382,9 @@ Resources:
           Action: TERMINATE
           TerminationWaitTimeInMinutes: 5
       ECSServices:
-        - ClusterName: !Ref ECSCluster
-          ServiceName: !Ref ECSService
-      LoadBalancerInfo:
+        - ClusterName: java-cicd-cluster
+          ServiceName: cicd-demo-service
+      LoadBalancerInfo: 
         TargetGroupPairInfoList:
           - ProdTrafficRoute:
               ListenerArns:
