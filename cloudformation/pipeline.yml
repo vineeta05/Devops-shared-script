@@ -92,8 +92,8 @@ Resources:
       VpcId: vpc-0a38c8b865b35e1f9
       SecurityGroupIngress:
         - IpProtocol: tcp
-          FromPort: 8080
-          ToPort: 8080
+          FromPort: 80
+          ToPort: 80
           SourceSecurityGroupId: !Ref ALBSecurityGroup
       SecurityGroupEgress:
         - IpProtocol: -1
@@ -235,7 +235,7 @@ Resources:
             - !Ref ECSSecurityGroup
       LoadBalancers:
         - ContainerName: cicd-demo
-          ContainerPort: 8080
+          ContainerPort: 80
           TargetGroupArn: !Ref TargetGroupBlue
 
   CodeDeployServiceRole:
