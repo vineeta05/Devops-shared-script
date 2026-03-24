@@ -8,7 +8,7 @@ Resources:
     Properties:
       BucketName: aws-cicd-ecs-bluegreen-bucket-vineeta-2677
 
-   ECSLogGroup:
+  ECSLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
       LogGroupName: /ecs/cicd-demo
