@@ -19,10 +19,9 @@ phases:
       - echo Pushing the Docker image...
       - docker push $ECR_REPO_URI:$IMAGE_TAG
       - docker push $ECR_REPO_URI:latest
-      - echo Writing imagedefinitions.json...
-      - printf '[{"name":"cicd-demo","imageUri":"%s"}]' $ECR_REPO_URI:$IMAGE_TAG > imagedefinitions.json
+      - echo Writing imageDetail.json...
+      - printf '{"ImageURI":"%s"}' $ECR_REPO_URI:$IMAGE_TAG > imageDetail.json
 
 artifacts:
   files:
-    - imagedefinitions.json
-    - java-cicd/appspec.yml
+    - imageDetail.json
