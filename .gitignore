@@ -1,0 +1,3 @@
+cloudformation/aws/
+*.zip
+*.deb
