@@ -4,7 +4,8 @@
   "requiresCompatibilities": ["FARGATE"],
   "cpu": "256",
   "memory": "512",
-  "executionRoleArn": "arn:aws:iam::829489762677:role/ecs-task-execution-role-vineeta",
+  "executionRoleArn": "arn:aws:iam::363786805049:role/ecs-task-execution-role-vineeta",
+  "taskRoleArn": "arn:aws:iam::363786805049:role/ecs-task-role-vineeta",
   "containerDefinitions": [
     {
       "name": "cicd-demo",
