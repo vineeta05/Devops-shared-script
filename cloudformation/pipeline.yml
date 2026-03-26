@@ -409,7 +409,7 @@ Resources:
             Value: !Sub "${AWS::AccountId}.dkr.ecr.${AWSRegion}.amazonaws.com/${ECRRepositoryName}"
       Source:
         Type: CODEPIPELINE
-        BuildSpec: buildspec.yml
+        BuildSpec: java-cicd/buildspec.yml
       Artifacts:
         Type: CODEPIPELINE
 
@@ -514,9 +514,9 @@ Resources:
                 ApplicationName: !Ref CodeDeployApplication
                 DeploymentGroupName: !Ref CodeDeployDeploymentGroup
                 TaskDefinitionTemplateArtifact: SourceArtifact
-                TaskDefinitionTemplatePath: taskdef.json
+                TaskDefinitionTemplatePath: java-cicd/taskdef.json
                 AppSpecTemplateArtifact: SourceArtifact
-                AppSpecTemplatePath: appspec.yml
+                AppSpecTemplatePath: java-cicd/appspec.yml
                 Image1ArtifactName: BuildArtifact
                 Image1ContainerName: IMAGE1_NAME
               InputArtifacts:
